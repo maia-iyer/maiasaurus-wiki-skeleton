@@ -36,16 +36,24 @@ sed -i \
 
 Requires Python 3.11+.
 
+Recommended ([uv](https://docs.astral.sh/uv/)):
+
 ```bash
-pip install qmd pyyaml
+uv venv .venv
+uv pip install --python .venv/bin/python qmd pyyaml
+source .venv/bin/activate
 ```
 
-(Optional) Use a virtualenv:
+Note: `uv venv` does not include `pip` inside the venv, so install with `uv pip install --python .venv/bin/python ...` rather than `.venv/bin/python -m pip`.
+
+Fallback (plain `venv` + `pip`):
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install qmd pyyaml
 ```
+
+Activate the venv (`source .venv/bin/activate`) in any new shell before running `./wiki`.
 
 ## 4. Make the CLI executable
 
@@ -88,6 +96,6 @@ See `README.md` for the full skill list.
 ## Troubleshooting
 
 - **`./wiki: command not found`** — run `chmod +x wiki` (step 4).
-- **`ModuleNotFoundError: qmd`** — `pip install qmd` in the active Python environment.
+- **`ModuleNotFoundError: qmd`** — activate the venv (`source .venv/bin/activate`) or install into the active Python: `uv pip install --python .venv/bin/python qmd` (or `pip install qmd`).
 - **Lint fails on a new page** — topic pages need a `sources:` list in frontmatter; source pages need `source_key`. See the example pages for the exact shape.
 - **`source 'X' never cited in provenance`** — every entry in `sources.jsonl` must have at least one matching `source_key` row in `provenance.jsonl`.

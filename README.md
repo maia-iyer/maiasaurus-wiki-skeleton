@@ -32,8 +32,9 @@ git clone <this repo> my-wiki && cd my-wiki
 sed -i '' 's/{{WIKI_NAME}}/my-wiki/g; s/{{WIKI_DESCRIPTION}}/My team knowledge base./g' \
   README.md INSTALL.md CLAUDE.md
 
-# Install dependencies
-pip install qmd pyyaml
+# Install dependencies (uv recommended; pip works too)
+uv venv .venv && uv pip install --python .venv/bin/python qmd pyyaml
+source .venv/bin/activate
 
 # Verify and index
 ./wiki lint
