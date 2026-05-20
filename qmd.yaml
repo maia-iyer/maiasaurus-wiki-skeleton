@@ -1,0 +1,17 @@
+chunking:
+  size: 512
+  overlap: 64
+
+embedding:
+  batch_size: "auto"
+
+rerank:
+  enabled: true
+  top_k_candidates: 40
+
+expansion:
+  enabled: false
+
+retrieval:
+  rrf_k: 60
+  blending_mode: "pure_rerank"

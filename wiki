@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Wiki CLI — thin wrapper for provenance, linting, indexing, and source queries."""
+
+import argparse
+import json
+import os
+import sys
+
+WIKI_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, WIKI_ROOT)
+
+from wiki_lib.sources import SourceRegistry
+from wiki_lib.provenance import ProvenanceLog
+from wiki_lib.linter import Linter
+from wiki_lib.indexer import Indexer
+
+
+def cmd_lint(args):
+    linter = Linter(WIKI_ROOT)
+    errors = linter.run()
+    if errors:
+        for e in errors:
+            print(f"  {e['file']}: {e['message']}", file=sys.stderr)
+        print(f"\n{len(errors)} issue(s) found.", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print("OK — no structural issues found.")
+
+
+def cmd_reindex(args):
+    indexer = Indexer(WIKI_ROOT)
+    indexer.reindex()
+    print("Reindex complete.")
+
+
+def cmd_provenance(args):
+    prov = ProvenanceLog(os.path.join(WIKI_ROOT, "provenance.jsonl"))
+    entries = prov.for_page(args.page)
+    if not entries:
+        print(f"No provenance entries for '{args.page}'.")
+        return
+    for e in entries:
+        origin = e["origin"]
+        source = e.get("source_key") or e.get("note_file") or e.get("action", "")
+        print(f"  [{origin}] {e['section']}")
+        print(f"    claim: {e['claim']}")
+        if source:
+            print(f"    from: {source}")
+        print(f"    ts: {e['ts']}")
+        print()
+
+
+def cmd_sources(args):
+    registry = SourceRegistry(os.path.join(WIKI_ROOT, "sources.jsonl"))
+    for s in registry.list_all():
+        print(f"  {s['key']} — {s.get('one_liner') or s['title']}")
+
+
+def cmd_validate(args):
+    path = os.path.join(WIKI_ROOT, "sources.jsonl")
+    if not os.path.exists(path):
+        print("sources.jsonl not found.", file=sys.stderr)
+        sys.exit(1)
+    errors = []
+    with open(path) as f:
+        for i, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                if "key" not in entry:
+                    errors.append(f"Line {i}: missing 'key' field")
+                if "title" not in entry:
+                    errors.append(f"Line {i}: missing 'title' field")
+                if "source_type" not in entry:
+                    errors.append(f"Line {i}: missing 'source_type' field")
+            except json.JSONDecodeError as e:
+                errors.append(f"Line {i}: invalid JSON: {e}")
+    if errors:
+        for e in errors:
+            print(f"  {e}", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print("OK — sources.jsonl is valid.")
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="wiki", description="Wiki CLI")
+    sub = parser.add_subparsers(dest="command")
+
+    sub.add_parser("lint", help="Run tier 1 structural linting")
+    sub.add_parser("reindex", help="Rebuild qmd search index")
+
+    prov = sub.add_parser("provenance", help="Show provenance for a page")
+    prov.add_argument("page", help="Relative page path (e.g. pages/context-budget.md)")
+
+    sub.add_parser("sources", help="List all registered sources")
+    sub.add_parser("validate", help="Check sources.jsonl integrity")
+
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        sys.exit(2)
+
+    {"lint": cmd_lint, "reindex": cmd_reindex, "provenance": cmd_provenance,
+     "sources": cmd_sources, "validate": cmd_validate}[args.command](args)
+
+
+if __name__ == "__main__":
+    main()

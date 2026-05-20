@@ -1,0 +1,8 @@
+{
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_VERBOSITY": "error",
+    "HF_HUB_DISABLE_PROGRESS_BARS": "1",
+    "LOGURU_LEVEL": "WARNING"
+  }
+}
