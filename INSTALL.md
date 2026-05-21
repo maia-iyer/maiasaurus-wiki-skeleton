@@ -7,34 +7,7 @@ git clone <this repo> my-wiki
 cd my-wiki
 ```
 
-## 2. Personalize CLAUDE.md
-
-`CLAUDE.md` is the only file that gets personalized — it's loaded as project context inside Claude Code. `README.md` and this `INSTALL.md` describe the skeleton itself and stay as-is.
-
-Two placeholders appear in `CLAUDE.md`:
-
-- `{{WIKI_NAME}}` — short name, e.g. `my-wiki`, `team-kb`, `research-notes`
-- `{{WIKI_DESCRIPTION}}` — one-line description of the wiki's purpose
-
-Replace them. macOS / BSD `sed`:
-
-```bash
-sed -i '' \
-  -e 's/{{WIKI_NAME}}/my-wiki/g' \
-  -e 's/{{WIKI_DESCRIPTION}}/My team knowledge base./g' \
-  CLAUDE.md
-```
-
-GNU `sed` (Linux):
-
-```bash
-sed -i \
-  -e 's/{{WIKI_NAME}}/my-wiki/g' \
-  -e 's/{{WIKI_DESCRIPTION}}/My team knowledge base./g' \
-  CLAUDE.md
-```
-
-## 3. Install dependencies
+## 2. Install dependencies
 
 Requires Python 3.11+.
 
@@ -57,32 +30,24 @@ pip install qmd pyyaml
 
 Activate the venv (`source .venv/bin/activate`) in any new shell before running `./wiki`.
 
-## 4. Make the CLI executable
+## 3. Run setup
 
 ```bash
 chmod +x wiki
+./wiki init
 ```
 
-## 5. Verify and index
+`./wiki init` is interactive. It asks for your wiki name and a one-line description, writes them into `CLAUDE.md` (the project context Claude Code reads), offers to remove the example content, then runs lint + validate + reindex. The first reindex takes ~30 seconds while the embedding model downloads.
+
+For scripted setups, pass everything as flags:
 
 ```bash
-./wiki lint        # should report: OK — no structural issues found.
-./wiki validate    # should report: OK — sources.jsonl is valid.
-./wiki reindex     # builds the qmd search index
+./wiki init --name my-wiki --description "My team knowledge base." --remove-example
 ```
 
-## 6. (Optional) Replace the example content
+If you re-run `./wiki init` after personalizing, it will refuse and tell you to use `--force`.
 
-The skeleton ships with one worked example:
-
-- `pages/semantic-search.md`
-- `pages/sources/example-rag-primer.md`
-- One entry in `sources.jsonl`
-- Three entries in `provenance.jsonl`
-
-Once you've ingested real content, delete the example and remove its rows from `sources.jsonl` and `provenance.jsonl`. Then re-run `./wiki lint && ./wiki reindex`.
-
-## 7. Use the skills
+## 4. Use the skills
 
 Open the directory in Claude Code. The skills in `.claude/skills/` are auto-discovered and invoked with a leading slash:
 
@@ -97,7 +62,8 @@ See `README.md` for the full skill list.
 
 ## Troubleshooting
 
-- **`./wiki: command not found`** — run `chmod +x wiki` (step 4).
+- **`./wiki: command not found`** — run `chmod +x wiki`.
 - **`ModuleNotFoundError: qmd`** — activate the venv (`source .venv/bin/activate`) or install into the active Python: `uv pip install --python .venv/bin/python qmd` (or `pip install qmd`).
+- **`./wiki init` says "already personalized"** — that's the safety net; use `./wiki init --force` to overwrite, or edit `CLAUDE.md` by hand.
 - **Lint fails on a new page** — topic pages need a `sources:` list in frontmatter; source pages need `source_key`. See the example pages for the exact shape.
 - **`source 'X' never cited in provenance`** — every entry in `sources.jsonl` must have at least one matching `source_key` row in `provenance.jsonl`.

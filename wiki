@@ -4,7 +4,9 @@
 import argparse
 import json
 import os
+import stat
 import sys
+import tempfile
 
 WIKI_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, WIKI_ROOT)
@@ -13,6 +15,35 @@ from wiki_lib.sources import SourceRegistry
 from wiki_lib.provenance import ProvenanceLog
 from wiki_lib.linter import Linter
 from wiki_lib.indexer import Indexer
+
+
+CLAUDE_MD = os.path.join(WIKI_ROOT, "CLAUDE.md")
+SOURCES_PATH = os.path.join(WIKI_ROOT, "sources.jsonl")
+PROVENANCE_PATH = os.path.join(WIKI_ROOT, "provenance.jsonl")
+EXAMPLE_TOPIC = os.path.join(WIKI_ROOT, "pages", "semantic-search.md")
+EXAMPLE_SOURCE = os.path.join(WIKI_ROOT, "pages", "sources", "example-rag-primer.md")
+EXAMPLE_SOURCE_KEY = "example-rag-primer"
+EXAMPLE_PAGE_KEYS = {"pages/semantic-search.md", "pages/sources/example-rag-primer.md"}
+
+
+def validate_sources(path: str) -> list[str]:
+    """Check sources.jsonl for required fields. Returns list of error strings."""
+    if not os.path.exists(path):
+        return ["sources.jsonl not found."]
+    errors = []
+    with open(path) as f:
+        for i, line in enumerate(f, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                for field in ("key", "title", "source_type"):
+                    if field not in entry:
+                        errors.append(f"Line {i}: missing '{field}' field")
+            except json.JSONDecodeError as e:
+                errors.append(f"Line {i}: invalid JSON: {e}")
+    return errors
 
 
 def cmd_lint(args):
@@ -57,37 +88,208 @@ def cmd_sources(args):
 
 
 def cmd_validate(args):
-    path = os.path.join(WIKI_ROOT, "sources.jsonl")
-    if not os.path.exists(path):
-        print("sources.jsonl not found.", file=sys.stderr)
-        sys.exit(1)
-    errors = []
-    with open(path) as f:
-        for i, line in enumerate(f, 1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-                if "key" not in entry:
-                    errors.append(f"Line {i}: missing 'key' field")
-                if "title" not in entry:
-                    errors.append(f"Line {i}: missing 'title' field")
-                if "source_type" not in entry:
-                    errors.append(f"Line {i}: missing 'source_type' field")
-            except json.JSONDecodeError as e:
-                errors.append(f"Line {i}: invalid JSON: {e}")
+    errors = validate_sources(SOURCES_PATH)
     if errors:
         for e in errors:
             print(f"  {e}", file=sys.stderr)
         sys.exit(1)
-    else:
-        print("OK — sources.jsonl is valid.")
+    print("OK — sources.jsonl is valid.")
+
+
+def _prompt(label: str, validator) -> str:
+    """Prompt for input up to 3 times until validator accepts it."""
+    for _ in range(3):
+        try:
+            value = input(f"{label}: ").strip()
+        except EOFError:
+            print("\nNo input available.", file=sys.stderr)
+            sys.exit(1)
+        ok, msg = validator(value)
+        if ok:
+            return value
+        print(f"  {msg}", file=sys.stderr)
+    print("Too many invalid attempts.", file=sys.stderr)
+    sys.exit(1)
+
+
+def _validate_name(value: str) -> tuple[bool, str]:
+    if not value:
+        return False, "Name is required."
+    if "/" in value or "\n" in value:
+        return False, "Name cannot contain slashes or newlines."
+    return True, ""
+
+
+def _validate_description(value: str) -> tuple[bool, str]:
+    if not value:
+        return False, "Description is required."
+    if "\n" in value:
+        return False, "Description must be a single line."
+    return True, ""
+
+
+def _atomic_write(path: str, content: str):
+    """Write content to path atomically via tempfile + rename."""
+    directory = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".tmp-", suffix=".write")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp, path)
+    except Exception:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+def _remove_example():
+    """Delete example pages and prune their rows from sources/provenance."""
+    for path in (EXAMPLE_TOPIC, EXAMPLE_SOURCE):
+        if os.path.exists(path):
+            os.unlink(path)
+
+    if os.path.exists(SOURCES_PATH):
+        with open(SOURCES_PATH) as f:
+            kept = []
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    kept.append(line)
+                    continue
+                try:
+                    entry = json.loads(stripped)
+                except json.JSONDecodeError:
+                    kept.append(line)
+                    continue
+                if entry.get("key") == EXAMPLE_SOURCE_KEY:
+                    continue
+                kept.append(line)
+        _atomic_write(SOURCES_PATH, "".join(kept))
+
+    if os.path.exists(PROVENANCE_PATH):
+        with open(PROVENANCE_PATH) as f:
+            kept = []
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    kept.append(line)
+                    continue
+                try:
+                    entry = json.loads(stripped)
+                except json.JSONDecodeError:
+                    kept.append(line)
+                    continue
+                if entry.get("source_key") == EXAMPLE_SOURCE_KEY:
+                    continue
+                if entry.get("page") in EXAMPLE_PAGE_KEYS:
+                    continue
+                kept.append(line)
+        _atomic_write(PROVENANCE_PATH, "".join(kept))
+
+
+def cmd_init(args):
+    if not os.path.exists(CLAUDE_MD):
+        print(f"CLAUDE.md not found at {CLAUDE_MD}. Run from the wiki repo root.", file=sys.stderr)
+        sys.exit(1)
+
+    with open(CLAUDE_MD) as f:
+        claude_content = f.read()
+
+    has_placeholders = "{{WIKI_NAME}}" in claude_content or "{{WIKI_DESCRIPTION}}" in claude_content
+    if not has_placeholders and not args.force:
+        first_line = claude_content.splitlines()[0] if claude_content else ""
+        print(f"CLAUDE.md is already personalized ({first_line}).")
+        print("Use `./wiki init --force` to overwrite.")
+        sys.exit(0)
+
+    try:
+        if args.name:
+            ok, msg = _validate_name(args.name)
+            if not ok:
+                print(f"--name: {msg}", file=sys.stderr)
+                sys.exit(1)
+            name = args.name
+        else:
+            name = _prompt("Wiki name (e.g. my-kb, team-notes)", _validate_name)
+
+        if args.description:
+            ok, msg = _validate_description(args.description)
+            if not ok:
+                print(f"--description: {msg}", file=sys.stderr)
+                sys.exit(1)
+            description = args.description
+        else:
+            description = _prompt("One-line description", _validate_description)
+    except KeyboardInterrupt:
+        print("\nAborted. No changes written.", file=sys.stderr)
+        sys.exit(1)
+
+    new_content = claude_content.replace("{{WIKI_NAME}}", name).replace("{{WIKI_DESCRIPTION}}", description)
+    _atomic_write(CLAUDE_MD, new_content)
+    print(f"Personalized CLAUDE.md (name: {name}).")
+
+    try:
+        mode = os.stat(__file__).st_mode
+        os.chmod(__file__, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    except OSError:
+        pass
+
+    example_present = os.path.exists(EXAMPLE_TOPIC) or os.path.exists(EXAMPLE_SOURCE)
+    if example_present:
+        if args.remove_example:
+            remove = True
+        elif args.keep_example:
+            remove = False
+        else:
+            try:
+                answer = input("Remove example content (semantic-search.md)? [y/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                answer = ""
+            remove = answer in ("y", "yes")
+        if remove:
+            _remove_example()
+            print("Removed example pages and registry rows.")
+        else:
+            print("Kept example content. Delete it later with `./wiki init --force --remove-example` or by hand.")
+
+    linter = Linter(WIKI_ROOT)
+    lint_errors = linter.run()
+    if lint_errors:
+        print("\nLint failed — not building search index.", file=sys.stderr)
+        for e in lint_errors:
+            print(f"  {e['file']}: {e['message']}", file=sys.stderr)
+        sys.exit(1)
+    print("Lint: OK.")
+
+    validate_errors = validate_sources(SOURCES_PATH)
+    if validate_errors:
+        print("\nsources.jsonl invalid — not building search index.", file=sys.stderr)
+        for e in validate_errors:
+            print(f"  {e}", file=sys.stderr)
+        sys.exit(1)
+    print("Validate: OK.")
+
+    print("Building search index (this can take ~30s on first run while the embedding model downloads)...")
+    Indexer(WIKI_ROOT).reindex()
+    print("Index: OK.")
+
+    print()
+    print("Setup complete. Open this directory in Claude Code and try:")
+    print('  /ingest <url>')
+    print('  /note "Idea I want to capture"')
 
 
 def main():
     parser = argparse.ArgumentParser(prog="wiki", description="Wiki CLI")
     sub = parser.add_subparsers(dest="command")
+
+    init = sub.add_parser("init", help="Personalize CLAUDE.md, verify, and build the search index")
+    init.add_argument("--name", help="Wiki name (skips the prompt)")
+    init.add_argument("--description", help="One-line description (skips the prompt)")
+    init.add_argument("--force", action="store_true", help="Re-personalize CLAUDE.md even if already filled in")
+    example = init.add_mutually_exclusive_group()
+    example.add_argument("--remove-example", dest="remove_example", action="store_true", help="Delete example pages without prompting")
+    example.add_argument("--keep-example", dest="keep_example", action="store_true", help="Keep example pages without prompting")
 
     sub.add_parser("lint", help="Run tier 1 structural linting")
     sub.add_parser("reindex", help="Rebuild qmd search index")
@@ -103,7 +305,7 @@ def main():
         parser.print_help()
         sys.exit(2)
 
-    {"lint": cmd_lint, "reindex": cmd_reindex, "provenance": cmd_provenance,
+    {"init": cmd_init, "lint": cmd_lint, "reindex": cmd_reindex, "provenance": cmd_provenance,
      "sources": cmd_sources, "validate": cmd_validate}[args.command](args)
 
 

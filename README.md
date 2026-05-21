@@ -6,7 +6,7 @@ This is a **skeleton** — fork or clone it, personalize `CLAUDE.md` (see [INSTA
 
 ## What you get
 
-- **CLI** (`./wiki`) — lint, reindex, provenance, sources, validate
+- **CLI** (`./wiki`) — init, lint, reindex, provenance, sources, validate
 - **Skills** in `.claude/skills/` (load on demand inside Claude Code):
   - `/ingest` — pull a URL into the wiki as a source page + provenance entries
   - `/lift` — promote claims from sources/notes into topic or initiative pages
@@ -28,17 +28,12 @@ See [INSTALL.md](INSTALL.md) for the full setup. Short version:
 ```bash
 git clone <this repo> my-wiki && cd my-wiki
 
-# Personalize CLAUDE.md — replace the {{WIKI_NAME}} / {{WIKI_DESCRIPTION}} placeholders
-sed -i '' 's/{{WIKI_NAME}}/my-wiki/g; s/{{WIKI_DESCRIPTION}}/My team knowledge base./g' \
-  CLAUDE.md
-
 # Install dependencies (uv recommended; pip works too)
 uv venv .venv && uv pip install --python .venv/bin/python qmd pyyaml
 source .venv/bin/activate
 
-# Verify and index
-./wiki lint
-./wiki reindex
+# Personalize CLAUDE.md, verify, and build the search index — interactive
+chmod +x wiki && ./wiki init
 
 # Open in Claude Code and try a skill
 # /ingest https://example.com/some-blog-post
