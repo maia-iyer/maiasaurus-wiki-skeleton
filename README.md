@@ -1,8 +1,8 @@
-# {{WIKI_NAME}} — LLM-Maintained Wiki Skeleton
+# LLM-Maintained Wiki Skeleton
 
 A starter template for a local, LLM-maintained knowledge base with semantic search, provenance tracking, and a set of Claude Code skills for ingesting, synthesizing, and refining content.
 
-This is a **skeleton** — fork or clone it, fill in the `{{WIKI_NAME}}` and `{{WIKI_DESCRIPTION}}` placeholders, and start ingesting sources.
+This is a **skeleton** — fork or clone it, personalize `CLAUDE.md` (see [INSTALL.md](INSTALL.md)), and start ingesting sources.
 
 ## What you get
 
@@ -28,9 +28,9 @@ See [INSTALL.md](INSTALL.md) for the full setup. Short version:
 ```bash
 git clone <this repo> my-wiki && cd my-wiki
 
-# Replace the {{WIKI_NAME}} / {{WIKI_DESCRIPTION}} placeholders
+# Personalize CLAUDE.md — replace the {{WIKI_NAME}} / {{WIKI_DESCRIPTION}} placeholders
 sed -i '' 's/{{WIKI_NAME}}/my-wiki/g; s/{{WIKI_DESCRIPTION}}/My team knowledge base./g' \
-  README.md INSTALL.md CLAUDE.md
+  CLAUDE.md
 
 # Install dependencies (uv recommended; pip works too)
 uv venv .venv && uv pip install --python .venv/bin/python qmd pyyaml

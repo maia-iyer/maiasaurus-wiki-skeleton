@@ -7,20 +7,22 @@ git clone <this repo> my-wiki
 cd my-wiki
 ```
 
-## 2. Replace placeholders
+## 2. Personalize CLAUDE.md
 
-Two placeholders appear in `README.md`, `INSTALL.md`, and `CLAUDE.md`:
+`CLAUDE.md` is the only file that gets personalized — it's loaded as project context inside Claude Code. `README.md` and this `INSTALL.md` describe the skeleton itself and stay as-is.
+
+Two placeholders appear in `CLAUDE.md`:
 
 - `{{WIKI_NAME}}` — short name, e.g. `my-wiki`, `team-kb`, `research-notes`
 - `{{WIKI_DESCRIPTION}}` — one-line description of the wiki's purpose
 
-Replace them in one pass. macOS / BSD `sed`:
+Replace them. macOS / BSD `sed`:
 
 ```bash
 sed -i '' \
   -e 's/{{WIKI_NAME}}/my-wiki/g' \
   -e 's/{{WIKI_DESCRIPTION}}/My team knowledge base./g' \
-  README.md INSTALL.md CLAUDE.md
+  CLAUDE.md
 ```
 
 GNU `sed` (Linux):
@@ -29,7 +31,7 @@ GNU `sed` (Linux):
 sed -i \
   -e 's/{{WIKI_NAME}}/my-wiki/g' \
   -e 's/{{WIKI_DESCRIPTION}}/My team knowledge base./g' \
-  README.md INSTALL.md CLAUDE.md
+  CLAUDE.md
 ```
 
 ## 3. Install dependencies
